@@ -41,6 +41,7 @@ The view from a Besu network ledger is specified below. It consists of endorsed 
 5. LogIndex
 6. Signatures of validators from extraData (we can obtain a validator's public key from its signature using `recover`)
 
+Take a view at [Besu Block Header Fields](https://github.com/hyperledger/besu/blob/21.7.0/ethereum/core/src/main/java/org/hyperledger/besu/ethereum/core/BlockHeader.java#L199)
 
 ```protobuf
 syntax = "proto3";
