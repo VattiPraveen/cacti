@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.8;
+pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
-contract BesuMembership {
-    address public owner;
+import "@ensdomains/dnssec-oracle/contracts/algorithms/P256SHA256Algorithm.sol";
+import "asn1-decode/contracts/Asn1Decode.sol";
+import "./Interfaces/x509CertificateUtils.sol";
 
+contract BesuMembership is P256SHA256Algorithm, x509CertificateUtils {
     struct Member{
         string memberValue;
         string memberType;
@@ -15,9 +17,45 @@ contract BesuMembership {
         string securityDomain;
         mapping(string => Member) members;
     }
+
+    struct KeyUsage {
+        bool critical;
+        bool present;
+        uint16 bits;              // Value of KeyUsage bits. (E.g. 5 is 000000101)
+    }
+
+    struct ExtKeyUsage {
+        bool critical;
+        bool present;
+        bytes32[] oids;
+    }
+
+    struct Certificate {
+        address owner;
+        bytes32 parentId;
+        uint40 timestamp;
+        uint160 serialNumber;
+        uint40 validNotBefore;
+        uint40 validNotAfter;
+        bool cA;                  // Whether the certified public key may be used to verify certificate signatures.
+        uint8 pathLenConstraint;  // Maximum number of non-self-issued intermediate certs that may follow this
+                                  // cert in a valid certification path.
+        KeyUsage keyUsage;
+        ExtKeyUsage extKeyUsage;
+        bool sxg;                 // canSignHttpExchanges extension is present.
+        bytes32 extId;            // keccak256 of extensions field for further validation.
+                                  // Equal to 0x0 unless a critical extension was found but not parsed.
+                                  // This should always be checked on leaf certificates
+    }
     
+    mapping (bytes32 => Certificate) private certs;
+    
+
     Membership[] public memberships;
     
+    address public owner;
+
+
     modifier onlyOwner() {
         require(msg.sender == owner, "You are not the contract owner");
         _;
@@ -154,8 +192,24 @@ contract BesuMembership {
         revert("Membership not found");
     }
 
-    // verify member certificate in security domain using x509 certificate standard or EDCSA signature
+    // verify member certificate in security domain using x509 certificate
+    // user verify method from RSASHA256Algorithm.sol contract
+    // important parameters are key - Publickey, data - member certificate, signature - signature of member certificate 
 
+    function verifyMemberInSecurityDomain(string memory _securityDomain, string memory requestingOrg, bytes memory _key, bytes memory _cert) external view returns (bool) {
+        bytes signature = getSignature(_cert);
+        for (uint256 i = 0; i < memberships.length; i++) {
+            if (keccak256(abi.encodePacked(memberships[i].securityDomain)) == keccak256(abi.encodePacked(_securityDomain))) {
+                // check if member already exists or not
+                if (keccak256(abi.encodePacked(memberships[i].members[requestingOrg].memberValue)) == keccak256(abi.encodePacked(""))) {
+                    revert("Member does not exist");
+                }
+                
+                return verify(_key, _cert, signature);
+            }
+        }
+        revert("Membership not found");
+    }
 
 
 }
